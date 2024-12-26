@@ -1,46 +1,57 @@
 /**
  * @class SceneNode
- * @desc A SceneNode is a node in the scene graph.
- * @property {MeshDrawer} meshDrawer - The MeshDrawer object to draw
- * @property {TRS} trs - The TRS object to transform the MeshDrawer
- * @property {SceneNode} parent - The parent node
- * @property {Array} children - The children nodes
+ * @desc A SceneNode is a node in the scene graph, responsible for rendering and propagating transformations.
+ * @property {MeshDrawer} meshDrawer - The MeshDrawer object for rendering.
+ * @property {TRS} trs - The TRS object for applying transformations.
+ * @property {SceneNode} parent - The parent node in the graph.
+ * @property {Array<SceneNode>} children - The list of child nodes.
  */
-
 class SceneNode {
     constructor(meshDrawer, trs, parent = null) {
-        this.meshDrawer = meshDrawer;
-        this.trs = trs;
-        this.parent = parent;
-        this.children = [];
+        this.meshDrawer = meshDrawer || null; // Optional MeshDrawer for rendering
+        this.trs = trs; // Transformation object
+        this.parent = parent; // Parent node
+        this.children = []; // List of children nodes
 
-        // Automatically add this node as a child to its parent, if a parent exists
-        parent?.addChild(this);
+        // Automatically register this node as a child of its parent
+        if (this.parent) {
+            this.parent.addChild(this);
+        }
     }
 
+    /**
+     * Adds a child node to this node.
+     * @param {SceneNode} node - The child node to add.
+     */
     addChild(node) {
         this.children.push(node);
     }
 
-    draw(mvp, modelView, normalMatrix, modelMatrix) {
-        /**
-         * @Task1 : Implement the draw function for the SceneNode class.
-         */
+    /**
+     * Renders this node and its children, propagating transformations down the hierarchy.
+     * @param {mat4} mvpMatrix - The Model-View-Projection matrix.
+     * @param {mat4} modelViewMatrix - The Model-View matrix.
+     * @param {mat4} normalMatrix - The Normal transformation matrix.
+     * @param {mat4} modelMatrix - The Model matrix.
+     */
+    draw(mvpMatrix, modelViewMatrix, normalMatrix, modelMatrix) {
+        // Compute the transformation matrix for this node
+        const nodeTransform = this.trs.getTransformationMatrix();
 
-        const transformationMatrix = this.trs.getTransformationMatrix();
+        // Update the matrices by combining with the current node's transformation
+        const updatedMVP = MatrixMult(mvpMatrix, nodeTransform);
+        const updatedModelView = MatrixMult(modelViewMatrix, nodeTransform);
+        const updatedNormal = MatrixMult(normalMatrix, nodeTransform);
+        const updatedModel = MatrixMult(modelMatrix, nodeTransform);
 
-        // Compute transformed matrices
-        const transformedMvp = MatrixMult(mvp, transformationMatrix);
-        const transformedNormals = MatrixMult(normalMatrix, transformationMatrix);
-        const transformedModelView = MatrixMult(modelView, transformationMatrix);
-        const transformedModel = MatrixMult(modelMatrix, transformationMatrix);
+        // Render this node's mesh, if present
+        if (this.meshDrawer) {
+            this.meshDrawer.draw(updatedMVP, updatedModelView, updatedNormal, updatedModel);
+        }
 
-        // Recursively draw all children
-        this.children.forEach(child => 
-            child.draw(transformedMvp, transformedModelView, transformedNormals, transformedModel)
-        );
-
-        // Draw the mesh if it exists
-        this.meshDrawer?.draw(transformedMvp, transformedModelView, transformedNormals, transformedModel);
+        // Recursively draw all child nodes
+        for (const child of this.children) {
+            child.draw(updatedMVP, updatedModelView, updatedNormal, updatedModel);
+        }
     }
 }
