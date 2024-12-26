@@ -1,85 +1,90 @@
 /**
  * @class MeshDrawer
- * @description Helper class for drawing meshes with support for lighting and textures.
+ * @description Helper class for rendering meshes with lighting and textures.
  */
 class MeshDrawer {
     constructor(isLightSource = false) {
         // Compile shader program
-        this.prog = InitShaderProgram(meshVS, meshFS);
+        this.program = InitShaderProgram(meshVS, meshFS);
 
-        // Attribute and uniform locations
-        this.attribLocations = {
-            position: gl.getAttribLocation(this.prog, 'position'),
-            normal: gl.getAttribLocation(this.prog, 'normal'),
-            texCoord: gl.getAttribLocation(this.prog, 'texCoord'),
+        // Attribute locations
+        this.attributes = {
+            position: gl.getAttribLocation(this.program, 'position'),
+            normal: gl.getAttribLocation(this.program, 'normal'),
+            texCoord: gl.getAttribLocation(this.program, 'texCoord'),
         };
 
-        this.uniformLocations = {
-            mvp: gl.getUniformLocation(this.prog, 'mvp'),
-            mv: gl.getUniformLocation(this.prog, 'mv'),
-            normalMV: gl.getUniformLocation(this.prog, 'normalMV'),
-            modelMatrix: gl.getUniformLocation(this.prog, 'modelMatrix'),
-            isLightSource: gl.getUniformLocation(this.prog, 'isLightSource'),
-            tex: gl.getUniformLocation(this.prog, 'tex'),
+        // Uniform locations
+        this.uniforms = {
+            mvp: gl.getUniformLocation(this.program, 'mvp'),
+            mv: gl.getUniformLocation(this.program, 'mv'),
+            normalMV: gl.getUniformLocation(this.program, 'normalMV'),
+            modelMatrix: gl.getUniformLocation(this.program, 'modelMatrix'),
+            isLightSource: gl.getUniformLocation(this.program, 'isLightSource'),
+            textureSampler: gl.getUniformLocation(this.program, 'tex'),
         };
 
-        // Buffers for mesh data
+        // Buffers
         this.buffers = {
             position: gl.createBuffer(),
             normal: gl.createBuffer(),
             texCoord: gl.createBuffer(),
         };
 
-        // Texture and settings
         this.texture = gl.createTexture();
         this.numTriangles = 0;
         this.isLightSource = isLightSource;
     }
 
     /**
-     * Sets the mesh data for the drawer.
-     * @param {Array} vertPos - Vertex positions
-     * @param {Array} texCoords - Texture coordinates
-     * @param {Array} normals - Vertex normals
+     * Sets the mesh data.
+     * @param {Float32Array} positions - Vertex positions.
+     * @param {Float32Array} texCoords - Texture coordinates.
+     * @param {Float32Array} normals - Vertex normals.
      */
-    setMesh(vertPos, texCoords, normals) {
-        this.#bindAndBufferData(this.buffers.position, vertPos);
-        this.#bindAndBufferData(this.buffers.normal, normals);
-        this.#bindAndBufferData(this.buffers.texCoord, texCoords);
-
-        this.numTriangles = vertPos.length / 3;
+    setMesh(positions, texCoords, normals) {
+        this.#uploadBuffer(this.buffers.position, positions);
+        this.#uploadBuffer(this.buffers.normal, normals);
+        this.#uploadBuffer(this.buffers.texCoord, texCoords);
+        this.numTriangles = positions.length / 3;
     }
 
     /**
-     * Draws the mesh using the provided transformation matrices.
+     * Draws the mesh using provided transformation matrices.
+     * @param {Float32Array} mvpMatrix - Model-View-Projection matrix.
+     * @param {Float32Array} mvMatrix - Model-View matrix.
+     * @param {Float32Array} normalMatrix - Normal transformation matrix.
+     * @param {Float32Array} modelMatrix - Model matrix.
      */
-    draw(matrixMVP, matrixMV, matrixNormal, modelMatrix) {
-        gl.useProgram(this.prog);
+    draw(mvpMatrix, mvMatrix, normalMatrix, modelMatrix) {
+        gl.useProgram(this.program);
 
-        // Bind texture
+        // Bind texture and set uniforms
         gl.bindTexture(gl.TEXTURE_2D, this.texture);
-        gl.uniformMatrix4fv(this.uniformLocations.mvp, false, matrixMVP);
-        gl.uniformMatrix4fv(this.uniformLocations.mv, false, matrixMV);
-        gl.uniformMatrix4fv(this.uniformLocations.normalMV, false, matrixNormal);
-        gl.uniformMatrix4fv(this.uniformLocations.modelMatrix, false, modelMatrix);
-        gl.uniform1i(this.uniformLocations.isLightSource, this.isLightSource);
+        gl.uniformMatrix4fv(this.uniforms.mvp, false, mvpMatrix);
+        gl.uniformMatrix4fv(this.uniforms.mv, false, mvMatrix);
+        gl.uniformMatrix4fv(this.uniforms.normalMV, false, normalMatrix);
+        gl.uniformMatrix4fv(this.uniforms.modelMatrix, false, modelMatrix);
+        gl.uniform1i(this.uniforms.isLightSource, this.isLightSource);
 
-        // Set vertex attributes
-        this.#enableVertexAttrib(this.attribLocations.position, this.buffers.position, 3);
-        this.#enableVertexAttrib(this.attribLocations.normal, this.buffers.normal, 3);
-        this.#enableVertexAttrib(this.attribLocations.texCoord, this.buffers.texCoord, 2);
+        // Enable vertex attributes
+        this.#enableAttribute(this.attributes.position, this.buffers.position, 3);
+        this.#enableAttribute(this.attributes.normal, this.buffers.normal, 3);
+        this.#enableAttribute(this.attributes.texCoord, this.buffers.texCoord, 2);
 
-        // Draw triangles
+        // Draw the triangles
         gl.drawArrays(gl.TRIANGLES, 0, this.numTriangles);
     }
 
     /**
-     * Sets the texture from an HTML image element.
+     * Sets the texture from an image element.
+     * @param {HTMLImageElement} img - The image to use as texture.
      */
     setTexture(img) {
         gl.bindTexture(gl.TEXTURE_2D, this.texture);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, img);
 
+        // Configure texture parameters
         if (isPowerOf2(img.width) && isPowerOf2(img.height)) {
             gl.generateMipmap(gl.TEXTURE_2D);
         } else {
@@ -88,26 +93,30 @@ class MeshDrawer {
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         }
 
-        gl.useProgram(this.prog);
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, this.texture);
-        gl.uniform1i(this.uniformLocations.tex, 0);
+        gl.uniform1i(this.uniforms.textureSampler, 0);
     }
 
     /**
-     * Binds and buffers data for a given buffer.
+     * Uploads data to a WebGL buffer.
      * @private
+     * @param {WebGLBuffer} buffer - The buffer to upload data to.
+     * @param {Float32Array} data - The data to upload.
      */
-    #bindAndBufferData(buffer, data) {
+    #uploadBuffer(buffer, data) {
         gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.STATIC_DRAW);
     }
 
     /**
-     * Enables a vertex attribute for rendering.
+     * Enables a vertex attribute.
      * @private
+     * @param {GLint} location - The attribute location.
+     * @param {WebGLBuffer} buffer - The buffer containing attribute data.
+     * @param {number} size - The number of components per attribute.
      */
-    #enableVertexAttrib(location, buffer, size) {
+    #enableAttribute(location, buffer, size) {
         gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
         gl.vertexAttribPointer(location, size, gl.FLOAT, false, 0, 0);
         gl.enableVertexAttribArray(location);
